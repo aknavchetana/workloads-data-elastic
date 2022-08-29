@@ -1,0 +1,426 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
+import pandas as pd
+import numpy as np
+import json
+
+
+# In[2]:
+
+
+EXCEL_INPUT = "Elasticsearch-inventory.xlsx"
+EXCEL_SHEET_INVENTORY = "Inventory"
+
+
+# In[3]:
+
+
+EXCEL_RESOURCE_NAME = "RESOURCE-NAME"
+EXCEL_CLUSTER_NAME = "CLUSTER-NAME"
+EXCEL_NODE_NAME = "NODE-NAME"
+IP_ADDRESS = "IP-ADDRESS"
+EXCEL_WORKLOAD = "WORKLOAD"
+
+
+# In[4]:
+
+
+xls = pd.ExcelFile(EXCEL_INPUT)
+df_inventory = pd.read_excel(xls, EXCEL_SHEET_INVENTORY)
+
+
+# In[5]:
+
+
+resource_name = df_inventory.loc[:, EXCEL_RESOURCE_NAME]
+cluster_name = df_inventory.loc[:, EXCEL_CLUSTER_NAME]
+node_name = df_inventory.loc[:, EXCEL_NODE_NAME]
+workload = df_inventory.loc[:, EXCEL_WORKLOAD]
+
+
+# In[6]:
+
+
+json_content = None
+with open("output.json", "r") as json_file:
+    json_content = json.load(json_file)
+
+
+# In[7]:
+
+
+nan_list = []
+for i in range(len(df_inventory)):
+    nan_list.append(np.nan)
+df_inventory["IP-ADDRESS"] = pd.Series(nan_list)
+vm_ip_addresses_list = json_content['vm_information']['value'].split(', ')
+for current in vm_ip_addresses_list:
+    splitted_current = current.split(': ')
+    vm_name = splitted_current[0].replace("{", "")
+    ip_address = splitted_current[1].replace("}", "")
+    vm_name_indices = df_inventory.index[df_inventory["RESOURCE-NAME"] == vm_name].tolist()
+    df_inventory.loc[vm_name_indices, "IP-ADDRESS"] = ip_address
+ip_addresses = df_inventory["IP-ADDRESS"]
+
+
+# In[8]:
+
+
+ip_addresses
+
+
+# In[9]:
+
+
+df_inventory
+
+
+# In[10]:
+
+
+def get_data_coord_ip_addresses(): 
+    hosts = ""
+    for index in range(len(resource_name)):
+        if( type(cluster_name[index]) == str ):
+            if(hosts == ""):
+                hosts = hosts + ip_addresses[index]
+            else:
+                hosts = hosts + ", " + ip_addresses[index]
+    return hosts
+
+
+# In[11]:
+
+
+cluster_dict = {}
+for index in range(len(resource_name)):
+    if( type(cluster_name[index]) == str ):
+        if(cluster_name[index] not in cluster_dict): 
+            cluster_dict[cluster_name[index]] = [ip_addresses[index]]
+        else: 
+            cluster_dict[cluster_name[index]].append(ip_addresses[index])
+
+
+# In[12]:
+
+
+def generate_elasticsearch_installation():
+    hosts_ip_addresses = get_data_coord_ip_addresses()
+    yml = """- name: "Install Elasticsearch"
+  hosts: """ + hosts_ip_addresses + """
+  become: 'True'
+  tasks:
+  - name: "Update and upgrade apt packages"
+    apt:
+     upgrade: "True"
+     update_cache: "True"
+     
+  - name: "Import the Elasticsearch signing key"
+    shell: wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
+    
+  - name: "update your APT sources list to include the Elastic package repository"
+    shell: echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-7.x.list 
+  
+  - name: "Install the Java Virtual on the VM"
+    shell: sudo apt update && sudo apt install openjdk-8-jre-headless
+  
+  - name: "Configure the JAVA_HOME"
+    shell: export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+    
+  - name: "Update Ubuntu package sources"
+    shell: sudo apt update  
+    
+  - name: "Install Elasticsearch"
+    shell: sudo apt install elasticsearch
+    
+  - name: "Configure firewall to allow 9200"
+    shell: sudo ufw allow 9200/tcp
+    
+  - name: "Configure firewall to allow 9300"
+    shell: sudo ufw allow 9300/tcp
+    
+"""
+    return yml
+
+
+# In[13]:
+
+
+def generate_discovery_seed_hosts(current_cluster_name):
+    discovery_seed_hosts = "["
+    for ip in cluster_dict[current_cluster_name]:
+        if(discovery_seed_hosts == "["):
+            discovery_seed_hosts = discovery_seed_hosts + "\"" + ip + "\""
+        else: 
+            discovery_seed_hosts = discovery_seed_hosts + ", \"" + ip + "\""
+    discovery_seed_hosts = discovery_seed_hosts + "]"
+    return discovery_seed_hosts
+
+
+# In[14]:
+
+
+def generate_initial_master_nodes(current_cluster_name):
+    initial_master_nodes = "["
+    for index in range(len(resource_name)):
+        if( (cluster_name[index] == current_cluster_name) and (workload[index] != "COORDINATOR")) :
+            if initial_master_nodes == "[":
+                initial_master_nodes = initial_master_nodes + "\"" + node_name[index] + "\""
+            else:
+                initial_master_nodes = initial_master_nodes + ", \"" + node_name[index] + "\""
+    initial_master_nodes = initial_master_nodes + "]"
+    return initial_master_nodes
+
+
+# In[15]:
+
+
+def generate_elasticsearch_configuration(current_cluster_name, current_node_name, current_ip_address, current_workload):
+    discovery_seed_hosts = generate_discovery_seed_hosts(current_cluster_name)
+    initial_master_nodes = generate_initial_master_nodes(current_cluster_name)
+    sub_yml = ""
+    if(current_workload == 'COORDINATOR'):
+        sub_yml = """  - name: "Set node.master to false"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.master"
+     line: "node.master: false"
+     state: present
+    
+  - name: "Set node.data to false"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.data"
+     line: "node.data: false"
+     state: present
+    
+  - name: "Set node.ingest to false"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.ingest"
+     line: "node.ingest: false"
+     state: present
+    
+"""
+    elif(current_workload == 'DATANODES'):
+        sub_yml = """  - name: "Set node.master to true"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.master"
+     line: "node.master: true"
+     state: present
+    
+  - name: "Set node.data to true"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.data"
+     line: "node.data: true"
+     state: present
+    
+  - name: "Set node.ingest to true"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.ingest"
+     line: "node.ingest: true"
+     state: present
+    
+"""
+
+    yml = """- name: "Elasticsearch Configuration"
+  hosts: """ + current_ip_address + """
+  become: 'True'
+  tasks:
+  - name: "Set cluster.name"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "cluster.name"
+     line: "cluster.name: """ + current_cluster_name + """\"
+     state: present
+    
+  - name: "Set node.name"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.name"
+     line: "node.name: """ + current_node_name + """\"
+     state: present
+    
+  - name: "Set transport.tcp.port"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "transport.tcp.port"
+     line: "transport.tcp.port: 9300" 
+     state: present
+     
+  - name: "Set http.port"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "http.port"
+     line: "http.port: 9200"
+     state: present
+    
+  - name: "Set network.host"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "network.host"
+     line: "network.host: """ + current_ip_address + """\"
+     state: present
+    
+  - name: "Set path.data"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "path.data"
+     line: "path.data: /var/lib/elasticsearch"
+     state: present
+    
+  - name: "Set path.log"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "path.log"
+     line: "path.logs: /var/log/elasticsearch"
+     state: present
+
+  - name: "Set discovery_seed_hosts"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "discovery.seed_hosts"
+     line: 'discovery.seed_hosts: """ + discovery_seed_hosts + """\'
+     state: present
+    
+  - name: "Set initial_master_nodes"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "cluster.initial_master_nodes"
+     line: 'cluster.initial_master_nodes: """ + initial_master_nodes + """\'
+     state: present
+    
+"""
+    return yml+sub_yml
+
+
+# In[16]:
+
+
+def generate_elasticsearch_start_service():
+    hosts_ip_addresses = get_data_coord_ip_addresses()
+    yml = """- name: "Start Elasticsearch"
+  hosts: """ + hosts_ip_addresses + """
+  become: 'True'
+  tasks:
+  - name: "Start Elasticsearch"
+    shell: sudo systemctl start elasticsearch.service
+    
+"""
+    return yml
+
+
+# In[17]:
+
+
+def generate_rally_benchmark(current_cluster_name):
+    target_hosts = ""
+    for ip in cluster_dict[current_cluster_name] :
+        if target_hosts == "":
+            target_hosts = target_hosts + ip + ":9200"
+        else:
+            target_hosts = target_hosts + "," + ip + ":9200"
+    yml = """  - name: "Run the benchmarking test on """ + current_cluster_name + """\"
+    shell: esrally --track=metricbeat --pipeline=benchmark-only --target-hosts=""" + target_hosts + """\
+ --report-format=csv --report-file=rally_benchmark_result.csv
+    
+  - name: "Fetch the result csv and store it locally"
+    fetch:
+     src:  "rally_benchmark_result.csv"
+     flat: yes
+     dest: "elasticsearch.""" + current_cluster_name + """.rally_benchmark_result.csv" 
+
+"""
+    return yml
+
+
+# In[18]:
+
+
+# for harness
+def generate_elasticsearch_harness_workload(harness_ip_address):
+    
+    yml = """- name: "Rally Installation and Configuration"
+  hosts: """ + harness_ip_address + """
+  become: 'True'
+  tasks:
+  - name: "Update and upgrade apt packages"
+    apt:
+     upgrade: "True"
+     update_cache: "True"
+     
+  - name: "Install gcc"
+    apt:
+     name: gcc
+     state: present
+     
+  - name: "Install python3-pip"
+    apt: 
+     name: python3-pip
+     state: present
+     
+  - name: "Install python3-dev"
+    apt:
+     name: python3-dev
+     state: present
+     
+  - name: "Install git"
+    apt: 
+     name: git
+     state: present
+     
+  - name: "Install default-jdk"
+    apt: 
+     name: default-jdk
+     state: present
+     
+  - name: "Export JAVA_HOME"
+    shell: export JAVA_HOME="/usr/lib/jvm/java-8-openjdk-amd64"
+    
+  - name: "Install esrally"
+    shell: sudo pip3 install esrally
+
+  - name: "Configure esrally"
+    shell: sudo esrally configure    
+"""
+    sub_yml = ""
+    for current_cluster_name in cluster_dict:
+        sub_yml += generate_rally_benchmark(current_cluster_name)
+        
+    return yml+sub_yml
+
+
+# In[19]:
+
+
+elasticsearch_installation = generate_elasticsearch_installation()
+elasticsearch_config = ""
+for index in range(len(resource_name)):
+    if( (workload[index] != "HARNESS") and (type(ip_addresses[index]) == str) ):
+        elasticsearch_config += generate_elasticsearch_configuration(cluster_name[index], node_name[index], ip_addresses[index], workload[index])    
+elasticsearch_start = generate_elasticsearch_start_service()
+
+rally_benchmark = ""
+for index in range(len(resource_name)): 
+    if(workload[index] == "HARNESS"): 
+        rally_benchmark = generate_elasticsearch_harness_workload(ip_addresses[index])
+
+with open("elasticsearch.yml", "w") as thefile:
+    thefile.write(elasticsearch_installation)
+    thefile.write(elasticsearch_config)
+    thefile.write(elasticsearch_start)
+    thefile.write(rally_benchmark)
+
+
+# In[ ]:
+
+
+
+

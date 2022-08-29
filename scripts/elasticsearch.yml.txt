@@ -1,0 +1,444 @@
+- name: "Install Elasticsearch"
+  hosts: 172.19.5.15, 172.19.5.6, 172.19.5.11, 172.19.5.13
+  become: 'True'
+  tasks:
+  - name: "Update and upgrade apt packages"
+    apt:
+     upgrade: "True"
+     update_cache: "True"
+     
+  - name: "Import the Elasticsearch signing key"
+    shell: wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
+    
+  - name: "update your APT sources list to include the Elastic package repository"
+    shell: echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-7.x.list 
+  
+  - name: "Install the Java Virtual on the VM"
+    shell: sudo apt update && sudo apt install openjdk-8-jre-headless
+  
+  - name: "Configure the JAVA_HOME"
+    shell: export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+    
+  - name: "Update Ubuntu package sources"
+    shell: sudo apt update  
+    
+  - name: "Install Elasticsearch"
+    shell: sudo apt install elasticsearch
+    
+  - name: "Configure firewall to allow 9200"
+    shell: sudo ufw allow 9200/tcp
+    
+  - name: "Configure firewall to allow 9300"
+    shell: sudo ufw allow 9300/tcp
+    
+- name: "Elasticsearch Configuration"
+  hosts: 172.19.5.15
+  become: 'True'
+  tasks:
+  - name: "Set cluster.name"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "cluster.name"
+     line: "cluster.name: es-cluster"
+     state: present
+    
+  - name: "Set node.name"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.name"
+     line: "node.name: cnode"
+     state: present
+    
+  - name: "Set transport.tcp.port"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "transport.tcp.port"
+     line: "transport.tcp.port: 9300" 
+     state: present
+     
+  - name: "Set http.port"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "http.port"
+     line: "http.port: 9200"
+     state: present
+    
+  - name: "Set network.host"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "network.host"
+     line: "network.host: 172.19.5.15"
+     state: present
+    
+  - name: "Set path.data"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "path.data"
+     line: "path.data: /var/lib/elasticsearch"
+     state: present
+    
+  - name: "Set path.log"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "path.log"
+     line: "path.logs: /var/log/elasticsearch"
+     state: present
+
+  - name: "Set discovery_seed_hosts"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "discovery.seed_hosts"
+     line: 'discovery.seed_hosts: ["172.19.5.15", "172.19.5.6", "172.19.5.11", "172.19.5.13"]'
+     state: present
+    
+  - name: "Set initial_master_nodes"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "cluster.initial_master_nodes"
+     line: 'cluster.initial_master_nodes: ["dnode1", "dnode2", "dnode3"]'
+     state: present
+    
+  - name: "Set node.master to false"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.master"
+     line: "node.master: false"
+     state: present
+    
+  - name: "Set node.data to false"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.data"
+     line: "node.data: false"
+     state: present
+    
+  - name: "Set node.ingest to false"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.ingest"
+     line: "node.ingest: false"
+     state: present
+    
+- name: "Elasticsearch Configuration"
+  hosts: 172.19.5.6
+  become: 'True'
+  tasks:
+  - name: "Set cluster.name"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "cluster.name"
+     line: "cluster.name: es-cluster"
+     state: present
+    
+  - name: "Set node.name"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.name"
+     line: "node.name: dnode1"
+     state: present
+    
+  - name: "Set transport.tcp.port"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "transport.tcp.port"
+     line: "transport.tcp.port: 9300" 
+     state: present
+     
+  - name: "Set http.port"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "http.port"
+     line: "http.port: 9200"
+     state: present
+    
+  - name: "Set network.host"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "network.host"
+     line: "network.host: 172.19.5.6"
+     state: present
+    
+  - name: "Set path.data"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "path.data"
+     line: "path.data: /var/lib/elasticsearch"
+     state: present
+    
+  - name: "Set path.log"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "path.log"
+     line: "path.logs: /var/log/elasticsearch"
+     state: present
+
+  - name: "Set discovery_seed_hosts"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "discovery.seed_hosts"
+     line: 'discovery.seed_hosts: ["172.19.5.15", "172.19.5.6", "172.19.5.11", "172.19.5.13"]'
+     state: present
+    
+  - name: "Set initial_master_nodes"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "cluster.initial_master_nodes"
+     line: 'cluster.initial_master_nodes: ["dnode1", "dnode2", "dnode3"]'
+     state: present
+    
+  - name: "Set node.master to true"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.master"
+     line: "node.master: true"
+     state: present
+    
+  - name: "Set node.data to true"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.data"
+     line: "node.data: true"
+     state: present
+    
+  - name: "Set node.ingest to true"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.ingest"
+     line: "node.ingest: true"
+     state: present
+    
+- name: "Elasticsearch Configuration"
+  hosts: 172.19.5.11
+  become: 'True'
+  tasks:
+  - name: "Set cluster.name"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "cluster.name"
+     line: "cluster.name: es-cluster"
+     state: present
+    
+  - name: "Set node.name"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.name"
+     line: "node.name: dnode2"
+     state: present
+    
+  - name: "Set transport.tcp.port"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "transport.tcp.port"
+     line: "transport.tcp.port: 9300" 
+     state: present
+     
+  - name: "Set http.port"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "http.port"
+     line: "http.port: 9200"
+     state: present
+    
+  - name: "Set network.host"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "network.host"
+     line: "network.host: 172.19.5.11"
+     state: present
+    
+  - name: "Set path.data"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "path.data"
+     line: "path.data: /var/lib/elasticsearch"
+     state: present
+    
+  - name: "Set path.log"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "path.log"
+     line: "path.logs: /var/log/elasticsearch"
+     state: present
+
+  - name: "Set discovery_seed_hosts"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "discovery.seed_hosts"
+     line: 'discovery.seed_hosts: ["172.19.5.15", "172.19.5.6", "172.19.5.11", "172.19.5.13"]'
+     state: present
+    
+  - name: "Set initial_master_nodes"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "cluster.initial_master_nodes"
+     line: 'cluster.initial_master_nodes: ["dnode1", "dnode2", "dnode3"]'
+     state: present
+    
+  - name: "Set node.master to true"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.master"
+     line: "node.master: true"
+     state: present
+    
+  - name: "Set node.data to true"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.data"
+     line: "node.data: true"
+     state: present
+    
+  - name: "Set node.ingest to true"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.ingest"
+     line: "node.ingest: true"
+     state: present
+    
+- name: "Elasticsearch Configuration"
+  hosts: 172.19.5.13
+  become: 'True'
+  tasks:
+  - name: "Set cluster.name"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "cluster.name"
+     line: "cluster.name: es-cluster"
+     state: present
+    
+  - name: "Set node.name"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.name"
+     line: "node.name: dnode3"
+     state: present
+    
+  - name: "Set transport.tcp.port"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "transport.tcp.port"
+     line: "transport.tcp.port: 9300" 
+     state: present
+     
+  - name: "Set http.port"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "http.port"
+     line: "http.port: 9200"
+     state: present
+    
+  - name: "Set network.host"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "network.host"
+     line: "network.host: 172.19.5.13"
+     state: present
+    
+  - name: "Set path.data"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "path.data"
+     line: "path.data: /var/lib/elasticsearch"
+     state: present
+    
+  - name: "Set path.log"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "path.log"
+     line: "path.logs: /var/log/elasticsearch"
+     state: present
+
+  - name: "Set discovery_seed_hosts"
+    lineinfile:
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "discovery.seed_hosts"
+     line: 'discovery.seed_hosts: ["172.19.5.15", "172.19.5.6", "172.19.5.11", "172.19.5.13"]'
+     state: present
+    
+  - name: "Set initial_master_nodes"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "cluster.initial_master_nodes"
+     line: 'cluster.initial_master_nodes: ["dnode1", "dnode2", "dnode3"]'
+     state: present
+    
+  - name: "Set node.master to true"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.master"
+     line: "node.master: true"
+     state: present
+    
+  - name: "Set node.data to true"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.data"
+     line: "node.data: true"
+     state: present
+    
+  - name: "Set node.ingest to true"
+    lineinfile: 
+     dest: /etc/elasticsearch/elasticsearch.yml
+     regexp: "node.ingest"
+     line: "node.ingest: true"
+     state: present
+    
+- name: "Start Elasticsearch"
+  hosts: 172.19.5.15, 172.19.5.6, 172.19.5.11, 172.19.5.13
+  become: 'True'
+  tasks:
+  - name: "Start Elasticsearch"
+    shell: sudo systemctl start elasticsearch.service
+    
+- name: "Rally Installation and Configuration"
+  hosts: 172.19.5.14
+  become: 'True'
+  tasks:
+  - name: "Update and upgrade apt packages"
+    apt:
+     upgrade: "True"
+     update_cache: "True"
+     
+  - name: "Install gcc"
+    apt:
+     name: gcc
+     state: present
+     
+  - name: "Install python3-pip"
+    apt: 
+     name: python3-pip
+     state: present
+     
+  - name: "Install python3-dev"
+    apt:
+     name: python3-dev
+     state: present
+     
+  - name: "Install git"
+    apt: 
+     name: git
+     state: present
+     
+  - name: "Install default-jdk"
+    apt: 
+     name: default-jdk
+     state: present
+     
+  - name: "Export JAVA_HOME"
+    shell: export JAVA_HOME="/usr/lib/jvm/java-8-openjdk-amd64"
+    
+  - name: "Install esrally"
+    shell: sudo pip3 install esrally
+
+  - name: "Configure esrally"
+    shell: sudo esrally configure
+    
+  - name: "Run the benchmarking test on es-cluster"
+    shell: esrally --track=metricbeat --pipeline=benchmark-only --target-hosts=172.19.5.15:9200,172.19.5.6:9200,172.19.5.11:9200,172.19.5.13:9200 --report-format=csv --report-file=rally_benchmark_result.csv
+    
+  - name: "Fetch the result csv and store it locally"
+    fetch:
+     src:  "rally_benchmark_result.csv"
+     flat: yes
+     dest: "elasticsearch.es-cluster.rally_benchmark_result.csv" 
+
